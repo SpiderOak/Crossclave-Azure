@@ -3,7 +3,7 @@
 # Pre-requirements:
 #      - Have a storage account in which the folder path has been created: 
 #        '/.well-known/acme-challenge/', to put here the Let's Encrypt DNS check files
-
+#
 #      - Add "Path-based" rule in the Application Gateway with this configuration: 
 #           - Path: '/.well-known/acme-challenge/*'
 #           - Check the configure redirection option
@@ -22,20 +22,55 @@
 #      - Migrated to Az modules.
 #        Following modules are needed now: Az.Accounts, Az.Network, Az.Storage
 #
+#
+#      SPIDEROAK UPDATE 2020-10-21
+#      - Support multiple domains
+#      - Apply to multiple application gateways
+#      - Test if cert needs renewed before running
+#
 #######################################################################################
 
 Param(
-    [string]$domain,
+    [string]$domainsJson,
     [string]$EmailAddress,
     [string]$STResourceGroupName,
     [string]$storageName,
+    [string]$storageContainerName,
     [string]$AGResourceGroupName,
-    [string]$AGName,
+    [string]$AGNamesJson,
     [string]$AGOldCertName
 )
 
 # Ensures that no login info is saved after the runbook is done
 Disable-AzContextAutosave
+
+$renewDays = 14
+$domains = $domainsJson | ConvertFrom-Json
+$AGNames = $AGNamesJson | ConvertFrom-Json
+
+# Check the SSL Certificate
+$tempurl = "https://" + $domains[0]
+$req = [Net.HttpWebRequest]::Create($tempurl)
+# Don't die if the certificate had already expired or is a fake cert.
+$req.ServerCertificateValidationCallback = { $true }
+try {
+    $req.GetResponse() | Out-Null
+}
+# Don't bail on 400 and 500 errors. We just want the certificate.
+catch [System.Net.WebException]  {
+    if ($null -eq $_.Response)
+    {
+        Throw
+    }
+}
+[DateTime]$expiration = New-Object DateTime
+[DateTime]::TryParse($req.ServicePoint.Certificate.GetExpirationDateString(), [ref]$expiration)
+
+# If our cert not our dummy "flow" cert or the expiration is in more than $renewDays days, abort this run.
+if (($req.ServicePoint.Certificate.Subject -ne "CN=flow") && $expiration -gt [DateTime]::Now.AddDays($renewDays)) {
+    Write-Host "Certificate for $tempurl is still valid, exiting"
+    Break
+}
 
 # Log in as the service principal from the Runbook
 $connection = Get-AutomationConnection -Name AzureRunAsConnection
@@ -64,7 +99,7 @@ $state = Get-ACMEState -Path $env:TEMP;
 New-ACMENonce $state -PassThru;
 
 # Create the identifier for the DNS name
-$identifier = New-ACMEIdentifier $domain;
+$identifier = New-ACMEIdentifier $domains;
 
 # Create the order object at the ACME service.
 $order = New-ACMEOrder $state -Identifiers $identifier;
@@ -85,7 +120,7 @@ Set-Content -Path $fileName -Value $challenge.Data.Content -NoNewline;
 $blobName = ".well-known/acme-challenge/" + $challenge.Token
 $storageAccount = Get-AzStorageAccount -ResourceGroupName $STResourceGroupName -Name $storageName
 $ctx = $storageAccount.Context
-Set-AzStorageBlobContent -File $fileName -Container "public" -Context $ctx -Blob $blobName
+Set-AzStorageBlobContent -File $fileName -Container $storageContainerName -Context $ctx -Blob $blobName
 
 # Signal the ACME server that the challenge is ready
 $challenge | Complete-ACMEChallenge $state;
@@ -98,7 +133,7 @@ while($order.Status -notin ("ready","invalid")) {
 
 # We should have a valid order now and should be able to complete it
 # Therefore we need a certificate key
-$certKey = New-ACMECertificateKey -Path "$env:TEMP\$domain.key.xml";
+$certKey = New-ACMECertificateKey -Path "$env:TEMP\$domains.key.xml";
 
 # Complete the order - this will issue a certificate singing request
 Complete-ACMEOrder $state -Order $order -CertificateKey $certKey;
@@ -110,13 +145,16 @@ while(-not $order.CertificateUrl) {
 }
 
 # As soon as the url shows up we can create the PFX
-$password = ConvertTo-SecureString -String "Passw@rd123***" -Force -AsPlainText
-Export-ACMECertificate $state -Order $order -CertificateKey $certKey -Path "$env:TEMP\$domain.pfx" -Password $password;
+# Random password for PFX
+$password = ConvertTo-SecureString -String (-join ((65..90) + (97..122) | Get-Random -Count 12 | % {[char]$_})) -Force -AsPlainText
+Export-ACMECertificate $state -Order $order -CertificateKey $certKey -Path "$env:TEMP\$domains.pfx" -Password $password;
 
 # Delete blob to check DNS
-Remove-AzStorageBlob -Container "public" -Context $ctx -Blob $blobName
+Remove-AzStorageBlob -Container $storageContainerName -Context $ctx -Blob $blobName
 
 ### RENEW APPLICATION GATEWAY CERTIFICATE ###
-$appgw = Get-AzApplicationGateway -ResourceGroupName $AGResourceGroupName -Name $AGName
-Set-AzApplicationGatewaySSLCertificate -Name $AGOldCertName -ApplicationGateway $appgw -CertificateFile "$env:TEMP\$domain.pfx" -Password $password
-Set-AzApplicationGateway -ApplicationGateway $appgw
+foreach ($AGName in $AGNames) {
+    $appgw = Get-AzApplicationGateway -ResourceGroupName $AGResourceGroupName -Name $AGName
+    Set-AzApplicationGatewaySSLCertificate -Name $AGOldCertName -ApplicationGateway $appgw -CertificateFile "$env:TEMP\$domains.pfx" -Password $password
+    Set-AzApplicationGateway -ApplicationGateway $appgw
+}
