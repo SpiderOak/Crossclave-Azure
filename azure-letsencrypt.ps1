@@ -67,7 +67,7 @@ catch [System.Net.WebException]  {
 [DateTime]::TryParse($req.ServicePoint.Certificate.GetExpirationDateString(), [ref]$expiration)
 
 # If our cert not our dummy "flow" cert or the expiration is in more than $renewDays days, abort this run.
-if (($req.ServicePoint.Certificate.Subject -ne "CN=flow") && $expiration -gt [DateTime]::Now.AddDays($renewDays)) {
+if (($req.ServicePoint.Certificate.Subject -ne "CN=flow") -and ($expiration -gt [DateTime]::Now.AddDays($renewDays))) {
     Write-Host "Certificate for $tempurl is still valid, exiting"
     Break
 }
