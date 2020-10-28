@@ -58,7 +58,7 @@ try {
 }
 # Don't bail on 400 and 500 errors. We just want the certificate.
 catch [System.Net.WebException]  {
-    if ($null -eq $_.Response)
+    if ($null -eq $_.Exception.Response)
     {
         Throw
     }
@@ -68,7 +68,7 @@ catch [System.Net.WebException]  {
 
 # If our cert not our dummy "flow" cert or the expiration is in more than $renewDays days, abort this run.
 if (($req.ServicePoint.Certificate.Subject -ne "CN=flow") -and ($expiration -gt [DateTime]::Now.AddDays($renewDays))) {
-    Write-Host "Certificate for $tempurl is still valid, exiting"
+    Write-Output "Certificate for $tempurl is still valid, exiting"
     Break
 }
 
@@ -98,32 +98,30 @@ $state = Get-ACMEState -Path $env:TEMP;
 # It might be neccessary to acquire a new nonce, so we'll just do it for the sake of the example.
 New-ACMENonce $state -PassThru;
 
-# Create the identifier for the DNS name
-$identifier = New-ACMEIdentifier $domains;
-
 # Create the order object at the ACME service.
-$order = New-ACMEOrder $state -Identifiers $identifier;
+$order = New-ACMEOrder $state -Identifiers $domains;
 
 # Fetch the authorizations for that order
 $authZ = Get-ACMEAuthorization -State $state -Order $order;
 
 # Select a challenge to fullfill
-$challenge = Get-ACMEChallenge $state $authZ "http-01";
+$challenges = $authZ | Get-ACMEChallenge -State $state -Type "http-01";
 
 # Inspect the challenge data
-$challenge.Data;
+$challenges.Data;
 
 # Create the file requested by the challenge
+foreach ($challenge in $challenges) {
 $fileName = $env:TMP + '\' + $challenge.Token;
 Set-Content -Path $fileName -Value $challenge.Data.Content -NoNewline;
 
-$blobName = ".well-known/acme-challenge/" + $challenge.Token
-$storageAccount = Get-AzStorageAccount -ResourceGroupName $STResourceGroupName -Name $storageName
-$ctx = $storageAccount.Context
-Set-AzStorageBlobContent -File $fileName -Container $storageContainerName -Context $ctx -Blob $blobName
-
+    $blobName = ".well-known/acme-challenge/" + $challenge.Token
+    $storageAccount = Get-AzStorageAccount -ResourceGroupName $STResourceGroupName -Name $storageName
+    $ctx = $storageAccount.Context
+    Set-AzStorageBlobContent -File $fileName -Container $storageContainerName -Context $ctx -Blob $blobName
+}
 # Signal the ACME server that the challenge is ready
-$challenge | Complete-ACMEChallenge $state;
+$challenges | Complete-ACMEChallenge $state;
 
 # Wait a little bit and update the order, until we see the states
 while($order.Status -notin ("ready","invalid")) {
