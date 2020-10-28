@@ -47,6 +47,7 @@ Disable-AzContextAutosave
 $renewDays = 14
 $domains = $domainsJson | ConvertFrom-Json
 $AGNames = $AGNamesJson | ConvertFrom-Json
+[String[]] $blobNames = $NULL
 
 # Check the SSL Certificate
 $tempurl = "https://" + $domains[0]
@@ -112,14 +113,16 @@ $challenges.Data;
 
 # Create the file requested by the challenge
 foreach ($challenge in $challenges) {
-$fileName = $env:TMP + '\' + $challenge.Token;
-Set-Content -Path $fileName -Value $challenge.Data.Content -NoNewline;
+    $fileName = $env:TMP + '\' + $challenge.Token;
+    Set-Content -Path $fileName -Value $challenge.Data.Content -NoNewline;
 
     $blobName = ".well-known/acme-challenge/" + $challenge.Token
     $storageAccount = Get-AzStorageAccount -ResourceGroupName $STResourceGroupName -Name $storageName
     $ctx = $storageAccount.Context
     Set-AzStorageBlobContent -File $fileName -Container $storageContainerName -Context $ctx -Blob $blobName
+    $blobNames += $blobName
 }
+
 # Signal the ACME server that the challenge is ready
 $challenges | Complete-ACMEChallenge $state;
 
@@ -147,8 +150,10 @@ while(-not $order.CertificateUrl) {
 $password = ConvertTo-SecureString -String (-join ((65..90) + (97..122) | Get-Random -Count 12 | % {[char]$_})) -Force -AsPlainText
 Export-ACMECertificate $state -Order $order -CertificateKey $certKey -Path "$env:TEMP\$domains.pfx" -Password $password;
 
-# Delete blob to check DNS
-Remove-AzStorageBlob -Container $storageContainerName -Context $ctx -Blob $blobName
+# Delete blobs used to check DNS
+foreach ($blobName in $blobNames) {
+    Remove-AzStorageBlob -Container $storageContainerName -Context $ctx -Blob $blobName
+}
 
 ### RENEW APPLICATION GATEWAY CERTIFICATE ###
 foreach ($AGName in $AGNames) {
