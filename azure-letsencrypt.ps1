@@ -134,7 +134,7 @@ while($order.Status -notin ("ready","invalid")) {
 
 # We should have a valid order now and should be able to complete it
 # Therefore we need a certificate key
-$certKey = New-ACMECertificateKey -Path "$env:TEMP\$domains.key.xml";
+$certKey = New-ACMECertificateKey -Path "$env:TEMP\domains.key.xml";
 
 # Complete the order - this will issue a certificate singing request
 Complete-ACMEOrder $state -Order $order -CertificateKey $certKey;
@@ -148,7 +148,7 @@ while(-not $order.CertificateUrl) {
 # As soon as the url shows up we can create the PFX
 # Random password for PFX
 $password = ConvertTo-SecureString -String (-join ((65..90) + (97..122) | Get-Random -Count 12 | % {[char]$_})) -Force -AsPlainText
-Export-ACMECertificate $state -Order $order -CertificateKey $certKey -Path "$env:TEMP\$domains.pfx" -Password $password;
+Export-ACMECertificate $state -Order $order -CertificateKey $certKey -Path "$env:TEMP\domains.pfx" -Password $password;
 
 # Delete blobs used to check DNS
 foreach ($blobName in $blobNames) {
@@ -158,6 +158,6 @@ foreach ($blobName in $blobNames) {
 ### RENEW APPLICATION GATEWAY CERTIFICATE ###
 foreach ($AGName in $AGNames) {
     $appgw = Get-AzApplicationGateway -ResourceGroupName $AGResourceGroupName -Name $AGName
-    Set-AzApplicationGatewaySSLCertificate -Name $AGOldCertName -ApplicationGateway $appgw -CertificateFile "$env:TEMP\$domains.pfx" -Password $password
+    Set-AzApplicationGatewaySSLCertificate -Name $AGOldCertName -ApplicationGateway $appgw -CertificateFile "$env:TEMP\domains.pfx" -Password $password
     Set-AzApplicationGateway -ApplicationGateway $appgw
 }
