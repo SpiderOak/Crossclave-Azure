@@ -1,51 +1,65 @@
-param(
-    [string] $AutomationAccountName,
-    [string] $resourceGroupName,
-    [string] $storageName,
-    [string] $domainsJson,
-    [string] $emailAddress,
-    [string] $storageContainerName,
-    [string] $AGNamesJson,
-    [string] $AGOldCertName
-)
-# Json variable for domains to be passed into Parameters. Or should this logic be done on the ARM side?
-# Json variable for Gateways to pass in Parameters. Or should this logic be done on the ARM side?
+[CmdletBinding()]
 
-# Create and set runbook job schedule
-$letsencryptParameters = @{"domainsJson"=$domainsJson; "emailAddress"=$emailAddress; "resourceGroupName"=$resourceGroupName; "storageName"=$storageName; "storageContainerName"=$storageContainerName; "AGResourceGroupName"=$resourceGroupName; "AGNamesJson"=$AGNamesJson; "AGOldCertName"=$AGOldCertName;};
-$letsencryptRunbookName ="letsencryptrunbook"
-$letsencryptRunbookSchedule ="letsencryptrunbookschdule"
-$TimeZone = ([System.TimeZoneInfo]::Local).Id
 
-# Start Runbook 
-Start-AzAutomationRunbook -AutomationAccountName $AutomationAccountName -Name letsencryptRunbook -ResourceGroupName $resourceGroupName -MaxWaitSeconds 1000 -Wait -Parameters $letsencryptParameters
+$ResourceGroupName = $Env:resourceGroupName
+$AutomationAccount = $Env:AutomationAccountName
+$KeyVaultName = $Env:keyVaultName
+$RunAsAccountName = "$($AutomationAccount)-runas"
+$CertificatSubjectName = "CN=$($RunAsAccountName)"
+$AzAppUniqueId = (New-Guid).Guid
+$AzAdAppURI = "http://$($AutomationAccount)$($AzAppUniqueId)"
 
-# Create and set runbook job schedule. This is not tested
-New-AzAutomationSchedule -AutomationAccountName $AutomationAccountName -Name $letsencryptRunbookName -MonthInterval "1" -OneTime -ResourceGroupName $resourceGroupName -TimeZone $TimeZone
-Register-AzAutomationScheduledRunbook -AutomationAccountName $AutomationAccountName -ResourceGroupName $resourceGroupName  -RunbookName $letsencryptRunbookName  -ScheduleName $letsencryptRunbookName
 
-<#
-ARM template with scriptcontent, can also use github uri if needed.
 
-Does the runbook script parameters require just the names of resources or the full uri? In the arguments below its just using the name of the resources and no the full resourceid() uri such as:
-resourceId('Microsoft.Storage/blobServices', variables('letsencryptContainerName'))
+$AzureKeyVaultCertificatePolicy = New-AzKeyVaultCertificatePolicy -SubjectName $CertificatSubjectName -IssuerName "Self" -KeyType "RSA" -KeyUsage "DigitalSignature" -ValidityInMonths 120 -RenewAtNumberOfDaysBeforeExpiry 20 -KeyNotExportable:$False -ReuseKeyOnRenewal:$False
 
-"properties": {
-    "forceUpdateTag": "1",
-    "azPowerShellVersion": "4.6",
-    "arguments": "[format(' -AutomationAccountName {0} -resourceGroupName {1} -storageName {2} -domainsJson {3} -emailAddress {4} -storageContainerName {5} -AGNamesJson {6} -AGOldCertName {7}', variables('automationAccountName'), resourceGroup().name, parameters('storageAccountName'), 'test.spideroak-domain.com', 'admins@spideroak.com', 'variables('letsEncryptContainerName'), variables('applicationGatewayFlowBlockName'), 'flow')]",
-    "scriptContent": "
-            param(
-                [string] $AutomationAccountName,
-                [string] $resourceGroupName,
-                [string] $storageName,
-                [string] $domainsJson,
-                [string] $emailAddress,
-                [string] $storageContainerName,
-                [string] $AGNamesJson,
-                [string] $AGOldCertName
-            )
-            $letsencryptParameters = @{'domainsJson'=$domainsJson; 'emailAddress'=$emailAddress; 'resourceGroupName'=$resourceGroupName; 'storageName'=$storageName; 'storageContainerName'=$storageContainerName; 'AGNamesJson'=$AGNamesJson; 'AGOldCertName'=$AGOldCertName;}
-            Start-AzAutomationRunbook -AutomationAccountName $AutomationAccountName -Name letsencryptRunbook -ResourceGroupName $resourceGroupname -MaxWaitSeconds 1000 -Wait -Parameters $letsencryptParameters
-            ",
-#>
+Add-AzKeyVaultCertificate -VaultName $keyvaultName -Name $RunAsAccountName -CertificatePolicy $AzureKeyVaultCertificatePolicy | out-null
+
+do {
+    start-sleep -Seconds 20
+} until ((Get-AzKeyVaultCertificateOperation -Name $RunAsAccountName -vaultName $keyvaultName).Status -eq "completed")
+
+
+
+$PfxPassword = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48| foreach-object {[char]$_})  
+$PfxFilePath = join-path -Path (get-location).path -ChildPath "cert.pfx"
+
+start-sleep 30
+
+$AzKeyVaultCertificatSecret = Get-AzKeyVaultSecret -VaultName $keyvaultName -Name $RunAsAccountName
+
+$AzKeyVaultCertificatSecretBytes = [System.Convert]::FromBase64String($AzKeyVaultCertificatSecret.SecretValueText)
+
+$certCollection = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2Collection
+$certCollection.Import($AzKeyVaultCertificatSecretBytes,$null,[System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+
+$protectedCertificateBytes = $certCollection.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pkcs12, $PfxPassword)
+[System.IO.File]::WriteAllBytes($PfxFilePath, $protectedCertificateBytes)
+
+$AzADApplicationRegistration = New-AzADApplication -DisplayName $RunAsAccountName -HomePage "http://$($RunAsAccountName)" -IdentifierUris $AzAdAppURI
+
+$AzKeyVaultCertificatStringValue = [System.Convert]::ToBase64String($certCollection.GetRawCertData())
+$AzADApplicationCredential = New-AzADAppCredential -ApplicationId $AzADApplicationRegistration.ApplicationId -CertValue $AzKeyVaultCertificatStringValue -StartDate $certCollection.NotBefore -EndDate $certCollection.NotAfter
+
+
+$AzADServicePrincipal = New-AzADServicePrincipal -ApplicationId $AzADApplicationRegistration.ApplicationId -SkipAssignment
+
+
+$PfxPassword = ConvertTo-SecureString $PfxPassword -AsPlainText -Force
+New-AzAutomationCertificate -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutomationAccount -Path $PfxFilePath -Name "AzureRunAsCertificate" -Password $PfxPassword -Exportable:$Exportable 
+
+
+
+$ConnectionFieldData = @{
+        "ApplicationId" = $AzADApplicationRegistration.ApplicationId
+        "TenantId" = (Get-AzContext).Tenant.ID
+        "CertificateThumbprint" = $certCollection.Thumbprint
+        "SubscriptionId" = (Get-AzContext).Subscription.ID
+    }
+
+New-AzAutomationConnection -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutomationAccount -Name "AzureRunAsConnection" -ConnectionTypeName "AzureServicePrincipal" -ConnectionFieldValues $ConnectionFieldData
+
+# Let's Encrypt after doing automation
+
+$letsencryptParameters = @{'domainsJson'=$Env:domainsJson; 'emailAddress'=$Env:emailAddress; 'STResourceGroupName'=$Env:resourceGroupName; 'storageName'=$Env:storageName; 'storageContainerName'=$Env:storageContainerName; 'AGResourceGroupName'=$Env:resourceGroupName; 'AGNamesJson'=$Env:AGNamesJson; 'AGOldCertName'=$Env:AGOldCertName;}
+Start-AzAutomationRunbook -AutomationAccountName $Env:AutomationAccountName -Name $Env:runbookName -ResourceGroupName $Env:resourceGroupName -MaxWaitSeconds 1000 -Wait -Parameters $letsencryptParameters
