@@ -3,7 +3,7 @@
 
 $ResourceGroupName = $Env:resourceGroupName
 $AutomationAccount = $Env:AutomationAccountName
-$KeyVaultName = $Env:keyVaultName
+$keyvaultName = $Env:keyVaultName
 $RunAsAccountName = "$($AutomationAccount)-runas"
 $CertificatSubjectName = "CN=$($RunAsAccountName)"
 $AzAppUniqueId = (New-Guid).Guid
