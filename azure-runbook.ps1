@@ -7,7 +7,7 @@ $keyvaultName = $Env:keyVaultName
 $RunAsAccountName = "$($AutomationAccount)-runas"
 $CertificatSubjectName = "CN=$($RunAsAccountName)"
 $AzAppUniqueId = (New-Guid).Guid
-$AzAdAppURI = "http://$($AutomationAccount)$($AzAppUniqueId)"
+$AzAdAppURI = "http://$($AutomationAccount)/$($AzAppUniqueId)"
 
 
 
