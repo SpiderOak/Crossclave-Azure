@@ -38,6 +38,9 @@ $protectedCertificateBytes = $certCollection.Export([System.Security.Cryptograph
 
 $AzADApplicationRegistration = New-AzADApplication -DisplayName $RunAsAccountName -HomePage "http://$($RunAsAccountName)" -IdentifierUris $AzAdAppURI
 
+# Add debugging
+Write-Output $AzADApplicationRegistration
+
 $AzKeyVaultCertificatStringValue = [System.Convert]::ToBase64String($certCollection.GetRawCertData())
 $AzADApplicationCredential = New-AzADAppCredential -ApplicationId $AzADApplicationRegistration.ApplicationId -CertValue $AzKeyVaultCertificatStringValue -StartDate $certCollection.NotBefore -EndDate $certCollection.NotAfter
 
