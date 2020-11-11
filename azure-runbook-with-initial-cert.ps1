@@ -36,7 +36,7 @@ $STResourceGroupName = $Env:resourceGroupName
 $storageName = $Env:storageName
 $storageContainerName = $Env:storageContainerName
 $AGResourceGroupName = $Env:resourceGroupName
-$AGNames = $Env:AGNamesJson
+$AGNamesJson = $Env:AGNamesJson
 $AGOldCertName = $Env:AGOldCertName
 
 # Ensures that no login info is saved after the runbook is done
