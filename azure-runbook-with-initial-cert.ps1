@@ -47,30 +47,6 @@ $domains = $domainsJson | ConvertFrom-Json
 $AGNames = $AGNamesJson | ConvertFrom-Json
 [String[]] $blobNames = $NULL
 
-# Check the SSL Certificate
-$tempurl = "https://" + $domains[0]
-$req = [Net.HttpWebRequest]::Create($tempurl)
-# Don't die if the certificate had already expired or is a fake cert.
-$req.ServerCertificateValidationCallback = { $true }
-try {
-    $req.GetResponse() | Out-Null
-}
-# Don't bail on 400 and 500 errors. We just want the certificate.
-catch [System.Net.WebException]  {
-    if ($null -eq $_.Exception.Response)
-    {
-        Throw
-    }
-}
-[DateTime]$expiration = New-Object DateTime
-[DateTime]::TryParse($req.ServicePoint.Certificate.GetExpirationDateString(), [ref]$expiration)
-
-# If our cert not our dummy "flow" cert or the expiration is in more than $renewDays days, abort this run.
-if (($req.ServicePoint.Certificate.Subject -ne "CN=flow") -and ($expiration -gt [DateTime]::Now.AddDays($renewDays))) {
-    Write-Output "Certificate for $tempurl is still valid, exiting"
-    Break
-}
-
 # Log in as the service principal from the Runbook
 $connection = Get-AutomationConnection -Name AzureRunAsConnection
 Login-AzAccount -ServicePrincipal -Tenant $connection.TenantID -ApplicationId $connection.ApplicationID -CertificateThumbprint $connection.CertificateThumbprint
