@@ -48,8 +48,8 @@ $AGNames = $AGNamesJson | ConvertFrom-Json
 [String[]] $blobNames = $NULL
 
 # Log in as the service principal from the Runbook
-$connection = Get-AutomationConnection -Name AzureRunAsConnection
-Login-AzAccount -ServicePrincipal -Tenant $connection.TenantID -ApplicationId $connection.ApplicationID -CertificateThumbprint $connection.CertificateThumbprint
+# $connection = Get-AutomationConnection -Name AzureRunAsConnection
+# Login-AzAccount -ServicePrincipal -Tenant $connection.TenantID -ApplicationId $connection.ApplicationID -CertificateThumbprint $connection.CertificateThumbprint
 
 # Create a state object and save it to the harddrive
 $state = New-ACMEState -Path $env:TEMP
