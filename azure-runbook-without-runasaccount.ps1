@@ -1,0 +1,2 @@
+$letsencryptParameters = @{'domainsJson'=$Env:domainsJson; 'emailAddress'=$Env:emailAddress; 'STResourceGroupName'=$Env:resourceGroupName; 'storageName'=$Env:storageName; 'storageContainerName'=$Env:storageContainerName; 'AGResourceGroupName'=$Env:resourceGroupName; 'AGNamesJson'=$Env:AGNamesJson; 'AGOldCertName'=$Env:AGOldCertName;}
+Start-AzAutomationRunbook -AutomationAccountName $Env:AutomationAccountName -Name $Env:runbookName -ResourceGroupName $Env:resourceGroupName -MaxWaitSeconds 1000 -Wait -Parameters $letsencryptParameters
