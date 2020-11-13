@@ -79,7 +79,7 @@ Login-AzAccount -ServicePrincipal -Tenant $connection.TenantID -ApplicationId $c
 
 # Create a state object and save it to the harddrive
 $state = New-ACMEState -Path $env:TEMP
-$serviceName = 'LetsEncrypt'
+$serviceName = 'LetsEncrypt-Staging'
 
 # Fetch the service directory and save it in the state
 Get-ACMEServiceDirectory $state -ServiceName $serviceName -PassThru;
