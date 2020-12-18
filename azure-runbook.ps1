@@ -35,6 +35,11 @@ $certCollection.Import($AzKeyVaultCertificatSecretBytes,$null,[System.Security.C
 
 $protectedCertificateBytes = $certCollection.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pkcs12, $PfxPassword)
 [System.IO.File]::WriteAllBytes($PfxFilePath, $protectedCertificateBytes)
+# Find out who 'me' is:
+$req = [Net.HttpWebRequest]::Create("https://graph.microsoft.com/v1.0/me/")
+$me = $req.GetResponse()
+Write-Output $me
+
 Write-Output "New-AzADApplication -DisplayName $RunAsAccountName -HomePage http://$($RunAsAccountName) -IdentifierUris $AzAdAppURI"
 $AzADApplicationRegistration = New-AzADApplication -DisplayName $RunAsAccountName -HomePage "http://$($RunAsAccountName)" -IdentifierUris $AzAdAppURI
 
