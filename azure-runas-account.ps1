@@ -15,7 +15,7 @@ param (
 
 
 
-$RunAsAccountName = "$($AutomationAccount)-runas"
+$RunAsAccountName = "AzureRunAsConnection"
 $CertificatSubjectName = "CN=$($RunAsAccountName)"
 $AzAppUniqueId = (New-Guid).Guid
 $AzAdAppURI = "http://$($AutomationAccount)$($AzAppUniqueId)"
