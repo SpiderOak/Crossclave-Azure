@@ -15,7 +15,7 @@ param (
 
 
 
-$RunAsAccountName = "AzureRunAsConnection"
+$RunAsAccountName = "$($AutomationAccount)-runas"
 $CertificatSubjectName = "CN=$($RunAsAccountName)"
 $AzAppUniqueId = (New-Guid).Guid
 $AzAdAppURI = "http://$($AutomationAccount)$($AzAppUniqueId)"
@@ -76,4 +76,5 @@ $ConnectionFieldData = @{
     }
 
 New-AzAutomationConnection -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutomationAccount -Name "AzureRunAsConnection" -ConnectionTypeName "AzureServicePrincipal" -ConnectionFieldValues $ConnectionFieldData
+New-AzRoleAssignment -RoleDefinitionName "Contributor" -ApplicationId $AzADApplicationRegistration.ApplicationId
 
