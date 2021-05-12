@@ -62,6 +62,7 @@ $AzADApplicationCredential = New-AzADAppCredential -ApplicationId $AzADApplicati
 
 $AzADServicePrincipal = New-AzADServicePrincipal -ApplicationId $AzADApplicationRegistration.ApplicationId -SkipAssignment
 
+New-AzRoleAssignment -RoleDefinitionName "Contributor" -ApplicationId $AzADApplicationRegistration.ApplicationId
 
 $PfxPassword = ConvertTo-SecureString $PfxPassword -AsPlainText -Force
 New-AzAutomationCertificate -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutomationAccount -Path $PfxFilePath -Name "AzureRunAsCertificate" -Password $PfxPassword -Exportable:$Exportable 
@@ -76,5 +77,4 @@ $ConnectionFieldData = @{
     }
 
 New-AzAutomationConnection -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutomationAccount -Name "AzureRunAsConnection" -ConnectionTypeName "AzureServicePrincipal" -ConnectionFieldValues $ConnectionFieldData
-New-AzRoleAssignment -RoleDefinitionName "Contributor" -ApplicationId $AzADApplicationRegistration.ApplicationId
 
